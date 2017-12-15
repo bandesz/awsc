@@ -91,7 +91,14 @@ export AWS_SESSION_TOKEN="%s"
 	return nil
 }
 
-func createScript(credentials *sts.Credentials, file string, cacheDir string, sessionName string, expiry int64) error {
+func createScript(
+	credentials *sts.Credentials,
+	file string,
+	profile string,
+	cacheDir string,
+	sessionName string,
+	expiry int64,
+) error {
 	content := fmt.Sprintf(`#!/bin/bash
 set -euo pipefail
 
@@ -104,7 +111,7 @@ AWS_PROFILE='%s' awsc auth \
 
 eval "$@"
 `,
-		os.Getenv("AWS_PROFILE"),
+		profile,
 		cacheDir,
 		sessionName,
 		expiry,
@@ -160,11 +167,15 @@ func createSession(config *aws.Config, profile string, expiry int64) (*sts.Crede
 		return nil, err
 	}
 
+	sessionProfile := profile
 	if profileConfig.SourceProfile != "" {
-		os.Setenv("AWS_PROFILE", profileConfig.SourceProfile)
+		sessionProfile = profileConfig.SourceProfile
 	}
 
-	sess := session.Must(session.NewSession(config))
+	sess := session.Must(session.NewSessionWithOptions(session.Options{
+		Config:  *config,
+		Profile: sessionProfile,
+	}))
 	service := sts.New(sess)
 
 	var credentials *sts.Credentials
@@ -238,7 +249,7 @@ func MFAAuth(config *aws.Config, out io.Writer, cacheDir string, sessionName str
 			return err
 		}
 
-		err = createScript(credentials, sessionFile, cacheDir, sessionName, expiry)
+		err = createScript(credentials, sessionFile, profile, cacheDir, sessionName, expiry)
 		if err != nil {
 			return err
 		}
