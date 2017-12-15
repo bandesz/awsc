@@ -79,9 +79,11 @@ func createEnvFile(credentials *sts.Credentials, file string) error {
 export AWS_ACCESS_KEY_ID="%s"
 export AWS_SECRET_ACCESS_KEY="%s"
 export AWS_SESSION_TOKEN="%s"
+export AWS_SECURITY_TOKEN="%s"
 `,
 		*credentials.AccessKeyId,
 		*credentials.SecretAccessKey,
+		*credentials.SessionToken,
 		*credentials.SessionToken,
 	)
 	err := ioutil.WriteFile(file, []byte(content), 0600)
