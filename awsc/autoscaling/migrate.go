@@ -36,7 +36,7 @@ func MigrateInstances(config *aws.Config, out io.Writer, name string) error {
 			return fmt.Errorf("failed to terminate instance: %s", err.Error())
 		}
 		for {
-			time.Sleep(20 * time.Second)
+			time.Sleep(10 * time.Second)
 
 			group, err := getAutoScalingGroup(service, name)
 			if err != nil {
@@ -70,6 +70,7 @@ func MigrateInstances(config *aws.Config, out io.Writer, name string) error {
 			}
 		}
 	}
+	fmt.Fprintln(out, "Done.")
 	return nil
 }
 
