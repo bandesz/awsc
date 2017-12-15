@@ -9,14 +9,37 @@ Rename it to ```awsc``` and move it somewhere on your PATH.
 
 ## Available commands
 
+Run ```awsc``` to see the available commands and flags.
+
 ### Authenticate with MFA
 
+The command expects you to use AWS profiles.
+
+You can create your profile in the ~/.aws/credentials file in the following format:
+
+```
+[my-company-dev]
+region=eu-west-1
+aws_access_key_id=AKIA...
+aws_secret_access_key=J5oAF9...
+```
+
+If you need to assume a role with MFA then you should also add an extra profile in ~/.aws/config:
+
+```
+[profile my-company-dev-some-role]
+source_profile = my-company-dev
+mfa_serial = arn:aws:iam::123456789:mfa/your_username
+role_arn = arn:aws:iam::123456789:role/SomeRole
+```
+
+Usage:
 ```
 AWS_PROFILE=my-profile awsc auth
 ```
 
 The command will create temporary credentials and save them under ~/.awsc with the given expiration time.
-The script generates three files:
+The command generates three files:
  - ~/.awsc/my-profile.json: the temporary credentials in JSON format
  - ~/.awsc/my-profile.env: the credentials exported as environment variables, so you can source them from a bash script
  - ~/.awsc/my-profile: a helper script which sources ~/.aws/my-profile.env and runs the given command. It also runs awsc auth to automatically reauthenticate if necessary.
@@ -36,7 +59,7 @@ $ my-company-dev aws s3 list-buckets
 
 If you plan to use the helper script, then you have to run the ```awsc auth``` command only once per profile.
 
-If you want to use your own script then include this two lines before you interact with AWS:
+If you want to use your own script then include these two lines before you interact with AWS:
 
 ```
 AWS_PROFILE=my-company-dev awsc auth

@@ -14,4 +14,4 @@ for arch in ${ALL_GOARCH}; do
   done
 done
 
-shasum -a 256 bin/* > bin/${NAME}.sha256sums
+cd bin && shasum -a 256 * > ${NAME}.sha256sums
