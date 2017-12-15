@@ -3,9 +3,9 @@ package command
 import (
 	"fmt"
 	"os"
-	"os/user"
 	"path"
 
+	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
 )
 
@@ -33,11 +33,11 @@ func Execute() {
 }
 
 func init() {
-	usr, err := user.Current()
+	homeDir, err := homedir.Dir()
 	if err != nil {
-		panic(err)
+		homeDir = "/tmp"
 	}
-	defaultCacheDir := path.Join(usr.HomeDir, ".awsc")
+	defaultCacheDir := path.Join(homeDir, ".awsc")
 	RootCmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "verbose output")
 	RootCmd.PersistentFlags().BoolVarP(&Debug, "debug", "d", false, "enable debug mode")
 	RootCmd.PersistentFlags().StringVarP(&Region, "region", "r", "", "The region to use. Overrides config/env settings.")

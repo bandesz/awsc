@@ -25,6 +25,12 @@
   revision = "0b12d6b5"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/mitchellh/go-homedir"
+  packages = ["."]
+  revision = "b8bc1bf767474819792c23f32d8286a45736f1c6"
+
+[[projects]]
   name = "github.com/spf13/cobra"
   packages = ["."]
   revision = "7b2c5ac9fc04fc5efafb60700713d4fa609b777b"
@@ -57,6 +63,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "29d4576ca52bd6d36c9b066d5b90dd77467d84a8802979e3f9e7c532d02741cb"
+  inputs-digest = "3a489b707efadcbe9fc7d72d0cf6328159771aab2da5e1ad6de7bbe565226c04"
   solver-name = "gps-cdcl"
   solver-version = 1
