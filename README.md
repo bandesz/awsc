@@ -1,0 +1,2 @@
+# awsc
+AWS companion app
