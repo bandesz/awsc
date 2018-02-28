@@ -1,3 +1,11 @@
+## 0.0.5
+
+IMPROVEMENTS:
+ * New auth parameter to set MFA token code instead of reading from prompt: --token-code
+ * New auth parameter to set AWS profile: --aws-profile
+ * You can now set some parameters from ENV vars (see help command)
+ * Basic tests were added
+
 ## 0.0.4
 
 BUG FIXES:
