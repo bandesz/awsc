@@ -111,7 +111,7 @@ AWS_PROFILE='%s' awsc auth \
 
 . %s.env
 
-eval "$@"
+exec env "$@"
 `,
 		profile,
 		cacheDir,
