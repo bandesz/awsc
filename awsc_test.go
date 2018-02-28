@@ -91,7 +91,7 @@ var _ = Describe("AWS companion", func() {
 		It("the env file should contain the AWS credentials", func() {
 			out, err := exec.Command(
 				"sh", "-c",
-				fmt.Sprintf("source %s && env", fmt.Sprintf("%s/%s.env", cacheDir, awsProfile)),
+				fmt.Sprintf(". %s && env", fmt.Sprintf("%s/%s.env", cacheDir, awsProfile)),
 			).Output()
 			expectCmdToSucceed(out, err)
 
