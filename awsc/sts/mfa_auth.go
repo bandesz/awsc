@@ -103,7 +103,7 @@ func createScript(
 	expiry int64,
 ) error {
 	content := fmt.Sprintf(`#!/bin/sh
-set -euo pipefail
+set -e
 
 awsc auth \
 	--cache-dir '%s' \
