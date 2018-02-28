@@ -101,7 +101,7 @@ func createScript(
 	sessionName string,
 	expiry int64,
 ) error {
-	content := fmt.Sprintf(`#!/bin/bash
+	content := fmt.Sprintf(`#!/bin/sh
 set -euo pipefail
 
 AWS_PROFILE='%s' awsc auth \
