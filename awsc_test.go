@@ -80,48 +80,75 @@ var _ = Describe("AWS companion", func() {
 	})
 
 	Describe("the auth command", func() {
-		It("should create helper files", func() {
-			Expect(fmt.Sprintf("%s/%s.json", cacheDir, awsProfile)).To(BeARegularFile())
-			Expect(fmt.Sprintf("%s/%s.env", cacheDir, awsProfile)).To(BeARegularFile())
-			Expect(fmt.Sprintf("%s/%s", cacheDir, awsProfile)).To(BeARegularFile())
-		})
-	})
 
-	Describe("the auth wrapper script", func() {
-		It("the env file should contain the AWS credentials", func() {
-			out, err := exec.Command(
-				"sh", "-c",
-				fmt.Sprintf(". %s && env", fmt.Sprintf("%s/%s.env", cacheDir, awsProfile)),
-			).Output()
-			expectCmdToSucceed(out, err)
+		Describe("the json file", func() {
 
-			Expect(string(out)).To(MatchRegexp("AWS_ACCESS_KEY_ID=.+\n"))
-			Expect(string(out)).To(MatchRegexp("AWS_SECRET_ACCESS_KEY=.+\n"))
-			Expect(string(out)).To(MatchRegexp("AWS_SESSION_TOKEN=.+\n"))
-			Expect(string(out)).To(MatchRegexp("AWS_SECURITY_TOKEN=.+\n"))
-		})
+			It("should be created", func() {
+				Expect(fmt.Sprintf("%s/%s.json", cacheDir, awsProfile)).To(BeARegularFile())
+			})
 
-		It("should pass the AWS credentials as environment variables", func() {
-			out, err := exec.Command("sh", "-c", fmt.Sprintf("%s/%s", cacheDir, awsProfile), "env").Output()
-			expectCmdToSucceed(out, err)
+			It("should contain the AWS credentials", func() {
+				sessionJSON, err := ioutil.ReadFile(fmt.Sprintf("%s/%s.json", cacheDir, awsProfile))
+				Expect(err).ToNot(HaveOccurred())
 
-			Expect(string(out)).To(MatchRegexp("AWS_ACCESS_KEY_ID=.+\n"))
-			Expect(string(out)).To(MatchRegexp("AWS_SECRET_ACCESS_KEY=.+\n"))
-			Expect(string(out)).To(MatchRegexp("AWS_SESSION_TOKEN=.+\n"))
-			Expect(string(out)).To(MatchRegexp("AWS_SECURITY_TOKEN=.+\n"))
+				session := map[string]interface{}{}
+				err = json.Unmarshal(sessionJSON, &session)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(session).To(HaveKey("AccessKeyId"))
+				Expect(session).To(HaveKey("SecretAccessKey"))
+				Expect(session).To(HaveKey("SessionToken"))
+			})
+
 		})
 
-		It("the json file should contain the AWS session", func() {
-			sessionJSON, err := ioutil.ReadFile(fmt.Sprintf("%s/%s.json", cacheDir, awsProfile))
-			Expect(err).ToNot(HaveOccurred())
+		Describe("the env file", func() {
 
-			session := map[string]interface{}{}
-			err = json.Unmarshal(sessionJSON, &session)
-			Expect(err).ToNot(HaveOccurred())
+			It("should be created", func() {
+				Expect(fmt.Sprintf("%s/%s.env", cacheDir, awsProfile)).To(BeARegularFile())
+			})
 
-			Expect(session).To(HaveKey("AccessKeyId"))
-			Expect(session).To(HaveKey("SecretAccessKey"))
-			Expect(session).To(HaveKey("SessionToken"))
+			It("should expose the AWS credentials as env variables", func() {
+				out, err := exec.Command(
+					"sh", "-c",
+					fmt.Sprintf(". %s && env", fmt.Sprintf("%s/%s.env", cacheDir, awsProfile)),
+				).Output()
+				expectCmdToSucceed(out, err)
+
+				Expect(string(out)).To(MatchRegexp("AWS_ACCESS_KEY_ID=.+\n"))
+				Expect(string(out)).To(MatchRegexp("AWS_SECRET_ACCESS_KEY=.+\n"))
+				Expect(string(out)).To(MatchRegexp("AWS_SESSION_TOKEN=.+\n"))
+				Expect(string(out)).To(MatchRegexp("AWS_SECURITY_TOKEN=.+\n"))
+			})
+
+		})
+
+		Describe("the wrapper script", func() {
+			It("should be created", func() {
+				Expect(fmt.Sprintf("%s/%s", cacheDir, awsProfile)).To(BeARegularFile())
+			})
+
+			It("should pass the AWS credentials to the command", func() {
+				out, err := exec.Command("sh", "-c", fmt.Sprintf("%s/%s", cacheDir, awsProfile), "env").Output()
+				expectCmdToSucceed(out, err)
+
+				Expect(string(out)).To(MatchRegexp("AWS_ACCESS_KEY_ID=.+\n"))
+				Expect(string(out)).To(MatchRegexp("AWS_SECRET_ACCESS_KEY=.+\n"))
+				Expect(string(out)).To(MatchRegexp("AWS_SESSION_TOKEN=.+\n"))
+				Expect(string(out)).To(MatchRegexp("AWS_SECURITY_TOKEN=.+\n"))
+			})
+
+			It("should pass the CLI params and ENV vars correctly", func() {
+				cmd := fmt.Sprintf(
+					`ENV_VAR_1=x %s/%s ENV_VAR_2=y ./scripts/check_args.sh "a" "b c"`,
+					cacheDir,
+					awsProfile,
+				)
+				out, err := exec.Command("sh", "-c", cmd).Output()
+				expectCmdToSucceed(out, err)
+
+				Expect(string(out)).To(Equal("a,b c,x,y\n"))
+			})
 		})
 	})
 
