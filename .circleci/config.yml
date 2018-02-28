@@ -1,0 +1,17 @@
+version: 2
+jobs:
+  build:
+    docker:
+      - image: circleci/golang:1.10
+    working_directory: /go/src/github.com/opsidian/awsc
+    steps:
+      - checkout
+      - run: go get -u github.com/golang/dep/cmd/dep
+      - run: dep ensure
+      - run: |
+          mkdir -p /home/circleci/.aws
+          echo "[default]" > /home/circleci/.aws/credentials
+          echo "aws_access_key_id=${AWS_ACCESS_KEY_ID}" >> /home/circleci/.aws/credentials
+          echo "aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}" >> /home/circleci/.aws/credentials
+      - run: make build
+      - run: make test

@@ -16,6 +16,7 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/defaults"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
@@ -96,16 +97,17 @@ export AWS_SECURITY_TOKEN="%s"
 func createScript(
 	credentials *sts.Credentials,
 	file string,
-	profile string,
+	awsProfile string,
 	cacheDir string,
 	sessionName string,
 	expiry int64,
 ) error {
-	content := fmt.Sprintf(`#!/bin/bash
-set -euo pipefail
+	content := fmt.Sprintf(`#!/bin/sh
+set -e
 
-AWS_PROFILE='%s' awsc auth \
+awsc auth \
 	--cache-dir '%s' \
+	--aws-profile '%s' \
 	--session-name '%s' \
 	--duration-seconds '%d'
 
@@ -113,8 +115,8 @@ AWS_PROFILE='%s' awsc auth \
 
 exec env "$@"
 `,
-		profile,
 		cacheDir,
+		awsProfile,
 		sessionName,
 		expiry,
 		file,
@@ -158,18 +160,20 @@ func getProfileConfig(profile string) (*ProfileConfig, error) {
 	return config, nil
 }
 
-func createSession(config *aws.Config, profile string, expiry int64) (*sts.Credentials, error) {
-	profileConfig, err := getProfileConfig(profile)
+func createSession(config *aws.Config, awsProfile string, expiry int64, mfaTokenCode string) (*sts.Credentials, error) {
+	profileConfig, err := getProfileConfig(awsProfile)
 	if err != nil {
 		return nil, err
 	}
 
-	token, err := promptMFAToken()
-	if err != nil {
-		return nil, err
+	if strings.TrimSpace(mfaTokenCode) == "" {
+		mfaTokenCode, err = promptMFAToken()
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	sessionProfile := profile
+	sessionProfile := awsProfile
 	if profileConfig.SourceProfile != "" {
 		sessionProfile = profileConfig.SourceProfile
 	}
@@ -178,7 +182,9 @@ func createSession(config *aws.Config, profile string, expiry int64) (*sts.Crede
 		Config:  *config,
 		Profile: sessionProfile,
 	}))
-	service := sts.New(sess)
+	service := sts.New(sess, &aws.Config{
+		Credentials: credentials.NewSharedCredentials("", awsProfile),
+	})
 
 	var credentials *sts.Credentials
 
@@ -189,9 +195,9 @@ func createSession(config *aws.Config, profile string, expiry int64) (*sts.Crede
 		output, err := service.AssumeRole(&sts.AssumeRoleInput{
 			RoleArn:         aws.String(profileConfig.RoleARN),
 			SerialNumber:    aws.String(profileConfig.MFASerial),
-			TokenCode:       aws.String(strings.TrimSpace(token)),
+			TokenCode:       aws.String(strings.TrimSpace(mfaTokenCode)),
 			DurationSeconds: aws.Int64(expiry),
-			RoleSessionName: aws.String(profile),
+			RoleSessionName: aws.String(awsProfile),
 		})
 		if err != nil {
 			return nil, err
@@ -206,7 +212,7 @@ func createSession(config *aws.Config, profile string, expiry int64) (*sts.Crede
 
 		output, err := service.GetSessionToken(&sts.GetSessionTokenInput{
 			SerialNumber:    aws.String(serialNumber),
-			TokenCode:       aws.String(strings.TrimSpace(token)),
+			TokenCode:       aws.String(strings.TrimSpace(mfaTokenCode)),
 			DurationSeconds: aws.Int64(expiry),
 		})
 		if err != nil {
@@ -219,14 +225,16 @@ func createSession(config *aws.Config, profile string, expiry int64) (*sts.Crede
 }
 
 // MFAAuth creates a session with MFA authentication
-func MFAAuth(config *aws.Config, out io.Writer, cacheDir string, sessionName string, expiry int64) error {
-	profile := os.Getenv("AWS_PROFILE")
-	if profile == "" {
-		profile = "default"
+func MFAAuth(
+	config *aws.Config, out io.Writer, cacheDir string,
+	awsProfile string, sessionName string, expiry int64, mfaTokenCode string,
+) error {
+	if awsProfile == "" {
+		awsProfile = "default"
 	}
 
 	if sessionName == "" {
-		sessionName = profile
+		sessionName = awsProfile
 	}
 	sessionFile := path.Join(cacheDir, sessionName)
 
@@ -236,7 +244,7 @@ func MFAAuth(config *aws.Config, out io.Writer, cacheDir string, sessionName str
 	}
 
 	if credentials == nil {
-		credentials, err = createSession(config, profile, expiry)
+		credentials, err = createSession(config, awsProfile, expiry, mfaTokenCode)
 		if err != nil {
 			return err
 		}
@@ -251,7 +259,7 @@ func MFAAuth(config *aws.Config, out io.Writer, cacheDir string, sessionName str
 			return err
 		}
 
-		err = createScript(credentials, sessionFile, profile, cacheDir, sessionName, expiry)
+		err = createScript(credentials, sessionFile, awsProfile, cacheDir, sessionName, expiry)
 		if err != nil {
 			return err
 		}
