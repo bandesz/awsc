@@ -1,4 +1,4 @@
 package awsc
 
 // Version is the app version
-const Version = "0.0.3"
+const Version = "0.0.4"
