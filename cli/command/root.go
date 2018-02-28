@@ -11,8 +11,6 @@ import (
 
 // Global flags and options
 var (
-	Verbose  bool
-	Debug    bool
 	Region   string
 	CacheDir string
 )
@@ -38,8 +36,18 @@ func init() {
 		homeDir = "/tmp"
 	}
 	defaultCacheDir := path.Join(homeDir, ".awsc")
-	RootCmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "verbose output")
-	RootCmd.PersistentFlags().BoolVarP(&Debug, "debug", "d", false, "enable debug mode")
-	RootCmd.PersistentFlags().StringVarP(&Region, "region", "r", "", "The region to use. Overrides config/env settings.")
+	RootCmd.PersistentFlags().StringVarP(&Region, "region", "r", "", "The region to use, overrides the value from the shared AWS credential files")
 	RootCmd.PersistentFlags().StringVarP(&CacheDir, "cache-dir", "c", defaultCacheDir, "Cache directory")
+
+	envs := map[string]string{
+		"AWS_REGION": "region",
+	}
+
+	for env, flag := range envs {
+		flag := RootCmd.PersistentFlags().Lookup(flag)
+		flag.Usage = fmt.Sprintf("%v [$%v]", flag.Usage, env)
+		if value := os.Getenv(env); value != "" {
+			flag.Value.Set(value)
+		}
+	}
 }
