@@ -9,6 +9,7 @@ import (
 var (
 	mfaAuthExpiry int64
 	sessionName   string
+	mfaTokenCode  string
 )
 
 var stsCmd = &cobra.Command{
@@ -24,7 +25,7 @@ var mfaAuthCmd = &cobra.Command{
 		if Region != "" {
 			config.Region = aws.String(Region)
 		}
-		return sts.MFAAuth(config, cmd.OutOrStdout(), CacheDir, sessionName, mfaAuthExpiry)
+		return sts.MFAAuth(config, cmd.OutOrStdout(), CacheDir, sessionName, mfaAuthExpiry, mfaTokenCode)
 	},
 	SilenceUsage:  true,
 	SilenceErrors: true,
@@ -33,5 +34,6 @@ var mfaAuthCmd = &cobra.Command{
 func init() {
 	mfaAuthCmd.PersistentFlags().Int64VarP(&mfaAuthExpiry, "duration-seconds", "", 43200, "The  duration, in seconds, that the credentials should remain valid.")
 	mfaAuthCmd.PersistentFlags().StringVarP(&sessionName, "session-name", "", "", "Name of the session")
+	mfaAuthCmd.PersistentFlags().StringVarP(&mfaTokenCode, "token-code", "", "", "MFA token code")
 	RootCmd.AddCommand(mfaAuthCmd)
 }

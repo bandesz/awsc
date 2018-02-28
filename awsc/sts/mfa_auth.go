@@ -158,15 +158,17 @@ func getProfileConfig(profile string) (*ProfileConfig, error) {
 	return config, nil
 }
 
-func createSession(config *aws.Config, profile string, expiry int64) (*sts.Credentials, error) {
+func createSession(config *aws.Config, profile string, expiry int64, mfaTokenCode string) (*sts.Credentials, error) {
 	profileConfig, err := getProfileConfig(profile)
 	if err != nil {
 		return nil, err
 	}
 
-	token, err := promptMFAToken()
-	if err != nil {
-		return nil, err
+	if strings.TrimSpace(mfaTokenCode) == "" {
+		mfaTokenCode, err = promptMFAToken()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	sessionProfile := profile
@@ -189,7 +191,7 @@ func createSession(config *aws.Config, profile string, expiry int64) (*sts.Crede
 		output, err := service.AssumeRole(&sts.AssumeRoleInput{
 			RoleArn:         aws.String(profileConfig.RoleARN),
 			SerialNumber:    aws.String(profileConfig.MFASerial),
-			TokenCode:       aws.String(strings.TrimSpace(token)),
+			TokenCode:       aws.String(strings.TrimSpace(mfaTokenCode)),
 			DurationSeconds: aws.Int64(expiry),
 			RoleSessionName: aws.String(profile),
 		})
@@ -206,7 +208,7 @@ func createSession(config *aws.Config, profile string, expiry int64) (*sts.Crede
 
 		output, err := service.GetSessionToken(&sts.GetSessionTokenInput{
 			SerialNumber:    aws.String(serialNumber),
-			TokenCode:       aws.String(strings.TrimSpace(token)),
+			TokenCode:       aws.String(strings.TrimSpace(mfaTokenCode)),
 			DurationSeconds: aws.Int64(expiry),
 		})
 		if err != nil {
@@ -219,7 +221,9 @@ func createSession(config *aws.Config, profile string, expiry int64) (*sts.Crede
 }
 
 // MFAAuth creates a session with MFA authentication
-func MFAAuth(config *aws.Config, out io.Writer, cacheDir string, sessionName string, expiry int64) error {
+func MFAAuth(
+	config *aws.Config, out io.Writer, cacheDir string, sessionName string, expiry int64, mfaTokenCode string,
+) error {
 	profile := os.Getenv("AWS_PROFILE")
 	if profile == "" {
 		profile = "default"
@@ -236,7 +240,7 @@ func MFAAuth(config *aws.Config, out io.Writer, cacheDir string, sessionName str
 	}
 
 	if credentials == nil {
-		credentials, err = createSession(config, profile, expiry)
+		credentials, err = createSession(config, profile, expiry, mfaTokenCode)
 		if err != nil {
 			return err
 		}
