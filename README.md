@@ -1,6 +1,6 @@
 # AWS Companion (awsc)
 
-[![CircleCI](https://circleci.com/gh/opsidian/awsc/tree/master.svg?style=shield)](https://circleci.com/gh/opsidian/awsc/tree/master) [![GoDoc](https://godoc.org/github.com/opsidian/awsc?status.svg)](https://godoc.org/github.com/opsidian/awsc) [![Latest release](https://img.shields.io/github/release/opsidian/awsc.svg)](https://github.com/opsidian/awsc/releases/latest)
+[![CircleCI](https://circleci.com/gh/opsidian/awsc.svg?style=shield&circle-token=6773a3338d4e05185402e3a67b3a732a27031373)](https://circleci.com/gh/opsidian/awsc) [![GoDoc](https://godoc.org/github.com/opsidian/awsc?status.svg)](https://godoc.org/github.com/opsidian/awsc) [![Latest release](https://img.shields.io/github/release/opsidian/awsc.svg)](https://github.com/opsidian/awsc/releases/latest)
 
 The AWS Companion app contains useful additions to the AWS cli.
 
