@@ -1,5 +1,7 @@
 # AWS Companion (awsc)
 
+[![GoDoc](https://godoc.org/github.com/opsidian/awsc?status.svg)](https://godoc.org/github.com/opsidian/awsc) [![Latest release](https://img.shields.io/github/release/opsidian/awsc.svg)](https://github.com/opsidian/awsc/releases/latest)
+
 The AWS Companion app contains useful additions to the AWS cli.
 
 ## How to install
