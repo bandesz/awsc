@@ -16,7 +16,6 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/defaults"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
@@ -182,9 +181,7 @@ func createSession(config *aws.Config, awsProfile string, expiry int64, mfaToken
 		Config:  *config,
 		Profile: sessionProfile,
 	}))
-	service := sts.New(sess, &aws.Config{
-		Credentials: credentials.NewSharedCredentials("", awsProfile),
-	})
+	service := sts.New(sess)
 
 	var credentials *sts.Credentials
 
