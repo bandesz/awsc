@@ -3,6 +3,13 @@ GOBUILD = go build
 ALL_GOARCH = amd64 386
 ALL_GOOS = windows linux darwin
 
+.PHONY: build
+build: bin/awsc ## Build the awsc executable
+
+bin/awsc:
+	mkdir -p bin
+	go build -o bin/awsc
+
 .PHONY: dist
 dist:
 	$(eval export NAME)
@@ -16,6 +23,5 @@ clean:
 	rm -rf bin
 
 .PHONY: test
-test:
-	go vet
-	go test $(go list ./... | grep -v /vendor/)
+test: bin/awsc
+	@PATH="./bin:${PATH}" go test $(go list ./... | grep -v /vendor/)
