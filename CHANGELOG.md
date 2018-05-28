@@ -1,3 +1,11 @@
+## 0.0.6
+
+IMPROVEMENTS:
+* Add ECS cluster draining when migrating autoscaling instances
+* Ability to drain more than one instance at a time
+* Drain and terminate instances in parallel
+* Add option to set the minimum percent of instances to keep healthy
+
 ## 0.0.5
 
 IMPROVEMENTS:
