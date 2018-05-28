@@ -9,7 +9,8 @@ import (
 )
 
 var (
-	ecsCluster string
+	ecsCluster  string
+	maxInFlight int
 )
 
 var autoScalingCmd = &cobra.Command{
@@ -35,7 +36,8 @@ var migrateCmd = &cobra.Command{
 		if Region != "" {
 			config.Region = aws.String(Region)
 		}
-		return autoscaling.MigrateInstances(config, cmd.OutOrStdout(), args[0], ecsCluster)
+		migrateService := autoscaling.NewMigrateService(config, cmd.OutOrStdout())
+		return migrateService.MigrateInstances(args[0], ecsCluster, maxInFlight)
 	},
 	SilenceUsage:  true,
 	SilenceErrors: true,
@@ -43,6 +45,7 @@ var migrateCmd = &cobra.Command{
 
 func init() {
 	migrateCmd.PersistentFlags().StringVarP(&ecsCluster, "ecs-cluster", "", "", "If any instance is part of an ECS cluster it will be drained first")
+	migrateCmd.PersistentFlags().IntVarP(&maxInFlight, "min-healthy-percent", "m", 50, "Minimum percent of instances to keep healthy during the migration")
 	autoScalingCmd.AddCommand(migrateCmd)
 	RootCmd.AddCommand(autoScalingCmd)
 }

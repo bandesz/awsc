@@ -11,100 +11,172 @@ import (
 	"github.com/aws/aws-sdk-go/service/ecs"
 )
 
-// MigrateInstances replaces all the instances in an auto scaling group one-by-one
-func MigrateInstances(config *aws.Config, out io.Writer, name string, ecsCluster string) error {
-	sess := session.Must(session.NewSession(config))
-	service := autoscaling.New(sess)
-	ecsService := ecs.New(sess)
+type MigrateService struct {
+	asService  *autoscaling.AutoScaling
+	ecsService *ecs.ECS
+	out        io.Writer
+}
 
+func NewMigrateService(
+	config *aws.Config,
+	out io.Writer,
+) *MigrateService {
+	sess := session.Must(session.NewSession(config))
+	return &MigrateService{
+		asService:  autoscaling.New(sess),
+		ecsService: ecs.New(sess),
+		out:        out,
+	}
+}
+
+// MigrateInstances replaces all the instances in an auto scaling group one-by-one
+func (ms *MigrateService) MigrateInstances(asgName string, ecsClusterName string, minHealthyPercent int) error {
 	ecsClusterInstances := map[string]string{}
 	var err error
-	if ecsCluster != "" {
-		ecsClusterInstances, err = getECSClusterInstances(ecsService, ecsCluster)
+	if ecsClusterName != "" {
+		ecsClusterInstances, err = ms.getECSClusterInstances(ecsClusterName)
 		if err != nil {
-			return fmt.Errorf("failed to get ECS container instances for %s: %s", ecsCluster, err)
+			return fmt.Errorf("failed to get ECS container instances for %s: %s", ecsClusterName, err)
 		}
 	}
 
-	group, err := getAutoScalingGroup(service, name)
+	oldInstances, err := ms.getAutoScalingGroupInstances(asgName)
 	if err != nil {
 		return err
 	}
-
-	oldInstances := group.Instances
 	instanceCount := len(oldInstances)
-	fmt.Fprintf(out, "Instance count: %d\n", instanceCount)
 
-	for _, oldInstance := range oldInstances {
-		if ecsInstance, isMember := ecsClusterInstances[*oldInstance.InstanceId]; isMember {
-			drainECSInstance(ecsService, *oldInstance.InstanceId, ecsInstance, ecsCluster, out)
-		}
+	maxInFlight := minHealthyPercent * instanceCount / 100
 
-		fmt.Fprintf(out, "Terminating %s\n", *oldInstance.InstanceId)
-		_, err := service.TerminateInstanceInAutoScalingGroup(
-			&autoscaling.TerminateInstanceInAutoScalingGroupInput{
-				InstanceId:                     oldInstance.InstanceId,
-				ShouldDecrementDesiredCapacity: aws.Bool(false),
-			},
-		)
-		if err != nil {
-			return fmt.Errorf("failed to terminate instance: %s", err.Error())
-		}
-		for {
-			time.Sleep(10 * time.Second)
+	oldInstanceIDs := make(map[string]bool, instanceCount)
+	for _, instance := range oldInstances {
+		oldInstanceIDs[*instance.InstanceId] = true
+	}
 
-			group, err := getAutoScalingGroup(service, name)
+	inFlight := make(chan struct{}, maxInFlight)
+	for i := 0; i < maxInFlight; i++ {
+		inFlight <- struct{}{}
+	}
+
+	instancesToProcess := make(chan string, instanceCount)
+	drained := make(chan string, maxInFlight)
+	errors := make(chan error, maxInFlight)
+
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	newInstances := make(map[string]bool, instanceCount)
+	deletedInstanceCount := 0
+
+	lastProgressTime := time.Now()
+
+	fmt.Fprintf(ms.out, "Migrating %d instances, max in flight: %d\n", instanceCount, maxInFlight)
+
+	for {
+		select {
+		case <-inFlight:
+			if len(oldInstances) == 0 {
+				continue
+			}
+			instancesToProcess <- *oldInstances[0].InstanceId
+			oldInstances = oldInstances[1:]
+		case instanceID := <-instancesToProcess:
+			lastProgressTime = time.Now()
+			if ecsInstance, isMember := ecsClusterInstances[instanceID]; isMember {
+				go func() {
+					err := ms.drainECSInstance(ecsClusterName, instanceID, ecsInstance)
+					if err != nil {
+						errors <- fmt.Errorf("failed to drain instance %s: %s", instanceID, err)
+						time.AfterFunc(10*time.Second, func() {
+							instancesToProcess <- instanceID
+						})
+						return
+					}
+					drained <- instanceID
+				}()
+			} else {
+				drained <- instanceID
+			}
+		case instanceID := <-drained:
+			fmt.Fprintf(ms.out, "Terminating %s\n", instanceID)
+			_, err := ms.asService.TerminateInstanceInAutoScalingGroup(
+				&autoscaling.TerminateInstanceInAutoScalingGroupInput{
+					InstanceId:                     aws.String(instanceID),
+					ShouldDecrementDesiredCapacity: aws.Bool(false),
+				},
+			)
 			if err != nil {
-				fmt.Fprintf(out, "Failed to get auto scaling group, retrying..")
-				time.Sleep(3 * time.Second)
+				errors <- fmt.Errorf("failed to terminate instance %s: %s", instanceID, err.Error())
+				time.AfterFunc(10*time.Second, func() {
+					drained <- instanceID
+				})
+			}
+		case <-ticker.C:
+			instances, err := ms.getAutoScalingGroupInstances(asgName)
+			if err != nil {
+				errors <- fmt.Errorf("failed to get instances for %s", asgName)
+				continue
 			}
 
-			stillTerminating := false
-			hasOutOfServiceInstance := false
+			healthyInstanceCount := 0
+			oldInstanceCount := 0
+			for _, instance := range instances {
+				_, isOld := oldInstanceIDs[*instance.InstanceId]
+				if isOld {
+					oldInstanceCount++
+				}
 
-			if len(group.Instances) < instanceCount {
-				hasOutOfServiceInstance = true
-				fmt.Fprintln(out, "Waiting for a new instance to be created..")
-			} else {
-				for _, newInstance := range group.Instances {
-					if *newInstance.InstanceId == *oldInstance.InstanceId {
-						stillTerminating = true
-						fmt.Fprintf(out, "Waiting for %s to be terminated..\n", *oldInstance.InstanceId)
-						break
-					}
-					if *newInstance.LifecycleState != autoscaling.LifecycleStateInService ||
-						*newInstance.HealthStatus != "Healthy" {
-						hasOutOfServiceInstance = true
-						fmt.Fprintf(out, "Waiting for %s to be in service..\n", *newInstance.InstanceId)
+				if *instance.LifecycleState == autoscaling.LifecycleStateInService &&
+					*instance.HealthStatus == "Healthy" {
+					healthyInstanceCount++
+					if !isOld {
+						if _, registered := newInstances[*instance.InstanceId]; !registered {
+							fmt.Fprintf(ms.out, "New instance is in service: %s\n", *instance.InstanceId)
+							newInstances[*instance.InstanceId] = true
+						}
 					}
 				}
 			}
 
-			if !stillTerminating && !hasOutOfServiceInstance {
-				break
+			addInFlight := min(
+				instanceCount-oldInstanceCount-deletedInstanceCount,
+				maxInFlight-(len(instances)-healthyInstanceCount),
+			)
+			for i := 0; i < addInFlight; i++ {
+				inFlight <- struct{}{}
+				deletedInstanceCount++
 			}
+
+			if healthyInstanceCount == len(instances) && oldInstanceCount == 0 {
+				fmt.Fprintln(ms.out, "Finished.")
+				return nil
+			}
+
+			if time.Now().After(lastProgressTime.Add(15 * time.Minute)) {
+				return fmt.Errorf("timeout reached as no progress happened in 15 minutes")
+			}
+		case err := <-errors:
+			fmt.Fprintf(ms.out, "Error: %s\n", err)
 		}
 	}
-	fmt.Fprintln(out, "Done.")
-	return nil
 }
 
-func getAutoScalingGroup(service *autoscaling.AutoScaling, name string) (*autoscaling.Group, error) {
-	output, err := service.DescribeAutoScalingGroups(&autoscaling.DescribeAutoScalingGroupsInput{
-		AutoScalingGroupNames: aws.StringSlice([]string{name}),
+func (ms *MigrateService) getAutoScalingGroupInstances(asgName string) ([]*autoscaling.Instance, error) {
+	output, err := ms.asService.DescribeAutoScalingGroups(&autoscaling.DescribeAutoScalingGroupsInput{
+		AutoScalingGroupNames: aws.StringSlice([]string{asgName}),
 	})
 	if err != nil {
 		return nil, err
 	}
 	if len(output.AutoScalingGroups) == 0 {
-		return nil, fmt.Errorf("auto scaling group does not exist: %s", name)
+		return nil, fmt.Errorf("auto scaling group does not exist: %s", asgName)
 	}
-	return output.AutoScalingGroups[0], nil
+	return output.AutoScalingGroups[0].Instances, nil
 }
 
-func getECSClusterInstances(service *ecs.ECS, clusterName string) (map[string]string, error) {
+func (ms *MigrateService) getECSClusterInstances(clusterName string) (map[string]string, error) {
 	instanceARNs := []*string{}
-	err := service.ListContainerInstancesPages(
+	err := ms.ecsService.ListContainerInstancesPages(
 		&ecs.ListContainerInstancesInput{Cluster: aws.String(clusterName)},
 		func(page *ecs.ListContainerInstancesOutput, _ bool) bool {
 			instanceARNs = append(instanceARNs, page.ContainerInstanceArns...)
@@ -121,7 +193,7 @@ func getECSClusterInstances(service *ecs.ECS, clusterName string) (map[string]st
 
 	res := map[string]string{}
 	for i := 0; i < len(instanceARNs); i += 100 {
-		instances, err := service.DescribeContainerInstances(&ecs.DescribeContainerInstancesInput{
+		instances, err := ms.ecsService.DescribeContainerInstances(&ecs.DescribeContainerInstancesInput{
 			Cluster:            aws.String(clusterName),
 			ContainerInstances: instanceARNs[i:min(i+100, len(instanceARNs))],
 		})
@@ -136,9 +208,9 @@ func getECSClusterInstances(service *ecs.ECS, clusterName string) (map[string]st
 	return res, nil
 }
 
-func drainECSInstance(service *ecs.ECS, ec2InstanceID string, instanceARN string, clusterName string, out io.Writer) error {
-	fmt.Fprintf(out, "Draining %s in ECS cluster %s\n", ec2InstanceID, clusterName)
-	_, err := service.UpdateContainerInstancesState(&ecs.UpdateContainerInstancesStateInput{
+func (ms *MigrateService) drainECSInstance(clusterName string, ec2InstanceID string, instanceARN string) error {
+	fmt.Fprintf(ms.out, "Draining %s in ECS cluster %s\n", ec2InstanceID, clusterName)
+	_, err := ms.ecsService.UpdateContainerInstancesState(&ecs.UpdateContainerInstancesStateInput{
 		Cluster:            aws.String(clusterName),
 		ContainerInstances: aws.StringSlice([]string{instanceARN}),
 		Status:             aws.String(ecs.ContainerInstanceStatusDraining),
@@ -156,22 +228,21 @@ func drainECSInstance(service *ecs.ECS, ec2InstanceID string, instanceARN string
 	for {
 		select {
 		case <-scheduler.C:
-			isDrained, err := isECSInstanceDrained(service, instanceARN, clusterName)
+			isDrained, err := ms.isECSInstanceDrained(clusterName, instanceARN)
 			if isDrained {
 				return nil
 			}
 			if err != nil {
-				fmt.Fprintf(out, "Warning: failed to get ECS instance state for %s: %s\n", ec2InstanceID, err)
+				fmt.Fprintf(ms.out, "Warning: failed to get ECS instance state for %s: %s\n", ec2InstanceID, err)
 			}
-			fmt.Fprintf(out, "Waiting for %s to be drained\n", ec2InstanceID)
 		case <-timeout.C:
 			return fmt.Errorf("Timeout reached when trying to drain %s in %s ECS cluster", ec2InstanceID, clusterName)
 		}
 	}
 }
 
-func isECSInstanceDrained(service *ecs.ECS, instanceARN string, clusterName string) (bool, error) {
-	instances, err := service.DescribeContainerInstances(&ecs.DescribeContainerInstancesInput{
+func (ms *MigrateService) isECSInstanceDrained(clusterName string, instanceARN string) (bool, error) {
+	instances, err := ms.ecsService.DescribeContainerInstances(&ecs.DescribeContainerInstancesInput{
 		Cluster:            aws.String(clusterName),
 		ContainerInstances: aws.StringSlice([]string{instanceARN}),
 	})
@@ -183,41 +254,6 @@ func isECSInstanceDrained(service *ecs.ECS, instanceARN string, clusterName stri
 
 	return *instance.Status == ecs.ContainerInstanceStatusDraining && *instance.RunningTasksCount == 0 && *instance.PendingTasksCount == 0, nil
 }
-
-/*func rebalanceECSCluster(service *ecs.ECS, clusterName string) error {
-	serviceARNs := []*string{}
-	_, err := service.ListServicesPages(
-		&ecs.ListServicesInput{Cluster: aws.String(clusterName)},
-		func(page *ecs.ListServicesOutput, lastPage bool) bool {
-			serviceARNs = append(serviceARNs, page.ServiceArns...)
-			return true
-		}
-	),
-	if err != nil {
-		return fmt.Errorf("failed to get ECS services for %s: %s", clusterName, err)
-	}
-
-	if len(serviceARNs) == 0 {
-		return nil
-	}
-
-	for i := 0; i < len(serviceARNs); i+= 100 {
-		services, err := service.DescribeServices(&ecs.DescribeServicesInput{
-			Cluster:  aws.String(clusterName),
-			Services: serviceARNs[i:min(i+100, len(serviceARNs))],
-		})
-
-		if err != nil {
-			return fmt.Errorf("failed to get ECS services for %s: %s", clusterName, err)
-		}
-
-		taskList, err := service.ListTasksPages(
-			&ecs.ListTasksInput
-		)
-
-	}
-
-}*/
 
 func min(a int, b int) int {
 	if a < b {

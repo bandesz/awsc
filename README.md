@@ -85,3 +85,7 @@ If you use your autoscaling group with an ECS cluster you can tell the command t
 ```
 awsc autoscaling migrate <auto scaling group name> -ecs-cluster <ECS cluster name> --region <AWS region>
 ```
+
+#### Max in flight
+
+You can set the minimum percent of instances kept healthy during the migration process with the `--min-healthy-percent` option (default is 50).
