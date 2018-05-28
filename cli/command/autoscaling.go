@@ -8,6 +8,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	ecsCluster string
+)
+
 var autoScalingCmd = &cobra.Command{
 	Use:   "autoscaling command <params>",
 	Short: "AWS auto scaling commands",
@@ -31,13 +35,14 @@ var migrateCmd = &cobra.Command{
 		if Region != "" {
 			config.Region = aws.String(Region)
 		}
-		return autoscaling.MigrateInstances(config, cmd.OutOrStdout(), args[0])
+		return autoscaling.MigrateInstances(config, cmd.OutOrStdout(), args[0], ecsCluster)
 	},
 	SilenceUsage:  true,
 	SilenceErrors: true,
 }
 
 func init() {
+	migrateCmd.PersistentFlags().StringVarP(&ecsCluster, "ecs-cluster", "", "", "If any instance is part of an ECS cluster it will be drained first")
 	autoScalingCmd.AddCommand(migrateCmd)
 	RootCmd.AddCommand(autoScalingCmd)
 }

@@ -71,9 +71,17 @@ AWS_PROFILE=my-company-dev awsc auth
 ### Replace all instances in an Auto Scaling group
 
 ```
-awsc autoscaling migrate <auto scaling group name>
+awsc autoscaling migrate <auto scaling group name> --region <AWS region>
 ```
 
 The command will terminate all auto scaling group instances one-by-one. When an instance is terminated it waits for a new instance to be created and be in service.
 
 If your auto scaling group has only one instance then this command might cause downtime.
+
+#### Drain ECS instances
+
+If you use your autoscaling group with an ECS cluster you can tell the command to drain your ECS instances first.
+
+```
+awsc autoscaling migrate <auto scaling group name> -ecs-cluster <ECS cluster name> --region <AWS region>
+```
