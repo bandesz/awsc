@@ -46,7 +46,11 @@ func (ms *MigrateService) MigrateInstances(asgName string, ecsClusterName string
 	}
 	instanceCount := len(oldInstances)
 
-	maxInFlight := minHealthyPercent * instanceCount / 100
+	maxInFlight := (100 - minHealthyPercent) * instanceCount / 100
+
+	if maxInFlight == 0 {
+		return fmt.Errorf("it is not possible to keep the minimum %d%% of instances healthy for %d instances, please lower the min-healthy-percent parameter", minHealthyPercent, instanceCount)
+	}
 
 	oldInstanceIDs := make(map[string]bool, instanceCount)
 	for _, instance := range oldInstances {
