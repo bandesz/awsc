@@ -1,3 +1,10 @@
+## 0.0.7
+
+BUG FIXES:
+* Fix a mistake where autoscaling migration's min-healthy-percent was handled like max-healthy-percent
+* Make autoscaling migration work for 1 instance
+* Throw an error when the autoscaling migration can't keep the given min-healthy-percent instances healthy
+
 ## 0.0.6
 
 IMPROVEMENTS:
