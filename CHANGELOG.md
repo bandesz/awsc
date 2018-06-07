@@ -1,3 +1,8 @@
+## 0.0.8
+
+BUG FIXES:
+* When there are no instances in an autoscaling group, the migration should not throw an error.
+
 ## 0.0.7
 
 BUG FIXES:

@@ -46,6 +46,11 @@ func (ms *MigrateService) MigrateInstances(asgName string, ecsClusterName string
 	}
 	instanceCount := len(oldInstances)
 
+	if instanceCount == 0 {
+		fmt.Fprintln(ms.out, "There are no instances in the auto scaling group.")
+		return nil
+	}
+
 	maxInFlight := (100 - minHealthyPercent) * instanceCount / 100
 
 	if maxInFlight == 0 {
