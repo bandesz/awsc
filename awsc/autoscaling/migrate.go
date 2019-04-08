@@ -135,8 +135,12 @@ func (ms *MigrateService) MigrateInstances(asgName string, ecsClusterName string
 					oldInstanceCount++
 				}
 
-				if *instance.LifecycleState == autoscaling.LifecycleStateInService &&
-					*instance.HealthStatus == "Healthy" {
+				instanceReady, err := ms.isInstanceReady(instance, ecsClusterName)
+				if err != nil {
+					errors <- fmt.Errorf("failed to check instance readiness for %s in %s", *instance.InstanceId, ecsClusterName)
+					continue
+				}
+				if instanceReady {
 					healthyInstanceCount++
 					if !isOld {
 						if _, registered := newInstances[*instance.InstanceId]; !registered {
@@ -262,6 +266,32 @@ func (ms *MigrateService) isECSInstanceDrained(clusterName string, instanceARN s
 	instance := instances.ContainerInstances[0]
 
 	return *instance.Status == ecs.ContainerInstanceStatusDraining && *instance.RunningTasksCount == 0 && *instance.PendingTasksCount == 0, nil
+}
+
+func (ms *MigrateService) isInstanceReady(instance *autoscaling.Instance, clusterName string) (bool, error) {
+	if isHealthyInstance(instance) {
+		if clusterName == "" {
+			return true, nil
+		}
+
+		return ms.isRegisteredECSHost(*instance.InstanceId, clusterName)
+	}
+	return false, nil
+}
+
+func isHealthyInstance(instance *autoscaling.Instance) bool {
+	return *instance.LifecycleState == autoscaling.LifecycleStateInService &&
+		*instance.HealthStatus == "Healthy"
+}
+
+func (ms *MigrateService) isRegisteredECSHost(instanceARN string, clusterName string) (bool, error) {
+	ecsClusterInstances, err := ms.getECSClusterInstances(clusterName)
+	if err != nil {
+		return false, err
+	}
+
+	_, registered := ecsClusterInstances[instanceARN]
+	return registered, nil
 }
 
 func min(a int, b int) int {
